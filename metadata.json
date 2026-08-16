@@ -1,0 +1,6 @@
+{
+  "name": "Glyph Interface",
+  "description": "Nothing Phone Glyph Interface control center, custom light patterns, music visualizer, and ambient torch.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

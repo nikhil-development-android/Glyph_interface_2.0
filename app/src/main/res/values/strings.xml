@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Details -->
+    <string name="app_name">Glyph Interface</string>
+    <string name="system_control">SYSTEM CONTROL</string>
+    <string name="glyph_interface_title">Glyph Interface</string>
+    
+    <!-- Status & Info -->
+    <string name="status_label">STATUS</string>
+    <string name="status_active_link">ACTIVE_LINK</string>
+    <string name="status_offline">OFFLINE</string>
+    
+    <!-- Controls -->
+    <string name="brightness_title">Brightness</string>
+    <string name="auto_brightness_desc">Auto-adjust with light sensor</string>
+    <string name="hardware_integration">HARDWARE INTEGRATION</string>
+    
+    <!-- Feature Titles & Subtitles -->
+    <string name="feature_essential_title">Essential</string>
+    <string name="feature_essential_sub">Synced glyph patterns</string>
+    
+    <string name="feature_timer_title">Glyph Timer</string>
+    <string name="feature_timer_sub">Visual countdown bar</string>
+    
+    <string name="feature_torch_title">Glyph Torch</string>
+    <string name="feature_torch_sub">Full white illumination</string>
+    
+    <string name="feature_visualizer_title">Music Visualizer</string>
+    <string name="feature_visualizer_sub">Realtime audio frequency sync</string>
+    
+    <string name="feature_volume_title">Volume Level Indicator</string>
+    <string name="feature_volume_sub">Dynamic step lights on volume key</string>
+    
+    <string name="feature_music_progress_title">Music Progress Track</string>
+    <string name="feature_music_progress_sub">Playback position bar</string>
+    
+    <string name="feature_flip_title">Flip to Glyph</string>
+    <string name="feature_flip_sub">Face-down silence with light indicators</string>
+    
+    <!-- Patterns & Calls -->
+    <string name="ringtone_patterns_header">RINGTONES &amp; NOTIFICATIONS</string>
+    <string name="ringtone_patterns_title">Glyph Patterns</string>
+    <string name="current_pattern_label">CURRENT PATTERN</string>
+    <string name="preview_glyph_button">PREVIEW GLYPH</string>
+    <string name="stop_preview_button">STOP PREVIEW</string>
+    <string name="playing_status">PLAYING</string>
+    
+    <!-- Timer -->
+    <string name="glyph_timer_header">COUNTDOWN &amp; NOTIFICATIONS</string>
+    <string name="custom_timer_label">CUSTOM MINUTES (1 - 120)</string>
+    <string name="timer_preset_30s">30s</string>
+    <string name="timer_preset_1m">1m</string>
+    <string name="timer_preset_5m">5m</string>
+    <string name="timer_preset_10m">10m</string>
+    <string name="timer_preset_25m">25m</string>
+    <string name="start_timer">START</string>
+    <string name="pause_timer">PAUSE</string>
+    <string name="resume_timer">RESUME</string>
+    <string name="reset_timer">RESET</string>
+    
+    <!-- Bottom Navigation Tabs -->
+    <string name="nav_visuals">Visuals</string>
+    <string name="nav_patterns">Patterns</string>
+    <string name="nav_timer">Timer</string>
+</resources>
