@@ -14,18 +14,24 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,28 +50,34 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -84,9 +96,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -99,22 +113,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.glyphinterface.R
-import com.glyphinterface.ui.theme.GlyphCardBorderDark
-import com.glyphinterface.ui.theme.GlyphCardBorderSubtle
-import com.glyphinterface.ui.theme.GlyphCardDark
-import com.glyphinterface.ui.theme.GlyphCardSubtle
-import com.glyphinterface.ui.theme.GlyphDarkBg
 import com.glyphinterface.ui.theme.GlyphInterfaceTheme
-import com.glyphinterface.ui.theme.GlyphPhoneBorder
-import com.glyphinterface.ui.theme.GlyphPhoneFrame
-import com.glyphinterface.ui.theme.GlyphRed
-import com.glyphinterface.ui.theme.GlyphSliderBg
-import com.glyphinterface.ui.theme.GlyphStatusGreen
-import com.glyphinterface.ui.theme.GlyphSurfaceDark
-import com.glyphinterface.ui.theme.GlyphTextMuted
-import com.glyphinterface.ui.theme.GlyphTextPrimaryDark
-import com.glyphinterface.ui.theme.GlyphTextSecondaryDark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -133,6 +132,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        AppSettings.init(this)
 
         val permissions = mutableListOf(
             android.Manifest.permission.RECORD_AUDIO,
@@ -153,46 +154,71 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             GlyphInterfaceTheme {
+                val isDark = when (AppSettings.themeMode) {
+                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                    ThemeMode.DARK -> true
+                    ThemeMode.LIGHT -> false
+                }
+
                 var currentScreen by remember { mutableStateOf(Screen.Main) }
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = GlyphDarkBg
+                    color = if (isDark) Color(0xFF000000) else Color(0xFFF2F2F7)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(GlyphDarkBg)
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Dynamic Wallpaper Canvas Background
+                        WallpaperBackground(
+                            wallpaperIndex = AppSettings.wallpaperIndex,
+                            isDark = isDark,
+                            accentColor = AppSettings.currentAccentColor,
+                            modifier = Modifier.matchParentSize()
+                        )
+
+                        // Main Content Flow
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
+                                .fillMaxSize()
+                                .padding(bottom = 86.dp) // Space for Floating Pill Bar
                         ) {
                             when (currentScreen) {
                                 Screen.Main -> {
                                     GlyphMainScreen(
-                                        onNavigateToTimer = { currentScreen = Screen.Timer },
-                                        onNavigateToCall = { currentScreen = Screen.Call }
-                                    )
-                                }
-                                Screen.Timer -> {
-                                    GlyphTimerScreen(
-                                        onBack = { currentScreen = Screen.Main }
+                                        isDark = isDark
                                     )
                                 }
                                 Screen.Call -> {
                                     GlyphCallScreen(
+                                        isDark = isDark,
+                                        onBack = { currentScreen = Screen.Main }
+                                    )
+                                }
+                                Screen.Timer -> {
+                                    GlyphTimerScreen(
+                                        isDark = isDark,
+                                        onBack = { currentScreen = Screen.Main }
+                                    )
+                                }
+                                Screen.Settings -> {
+                                    GlyphSettingsScreen(
+                                        isDark = isDark,
                                         onBack = { currentScreen = Screen.Main }
                                     )
                                 }
                             }
                         }
 
-                        // Bottom Navigation Bar
-                        HighDensityBottomBar(
+                        // Floating Bottom Pill Navigation Bar
+                        FloatingBottomBar(
                             currentScreen = currentScreen,
-                            onSelectScreen = { currentScreen = it }
+                            onSelectScreen = { currentScreen = it },
+                            isDark = isDark,
+                            accentColor = AppSettings.currentAccentColor,
+                            isGlass = AppSettings.isGlassEffect,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(horizontal = 20.dp, vertical = 12.dp)
                         )
                     }
                 }
@@ -207,25 +233,278 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Dot Matrix Canvas overlay
+ * Dynamic Canvas Backgrounds & Wallpapers
  */
 @Composable
-fun DotMatrixGrid(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val dotSpacing = 16.dp.toPx()
-        val dotRadius = 1.dp.toPx()
-        val numCols = (size.width / dotSpacing).toInt() + 1
-        val numRows = (size.height / dotSpacing).toInt() + 1
+fun WallpaperBackground(
+    wallpaperIndex: Int,
+    isDark: Boolean,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    when (wallpaperIndex) {
+        0 -> {
+            // Pitch Black (AMOLED) / Clean Light Surface
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0xFF000000) else Color(0xFFF2F2F7))
+            )
+        }
+        1 -> {
+            // Dot Matrix (Classic Nothing OS Grid)
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0xFF030303) else Color(0xFFF0F0F5))
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val dotSpacing = 18.dp.toPx()
+                    val dotRadius = 1.2.dp.toPx()
+                    val numCols = (size.width / dotSpacing).toInt() + 1
+                    val numRows = (size.height / dotSpacing).toInt() + 1
+                    val dotColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
 
-        for (i in 0..numCols) {
-            for (j in 0..numRows) {
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.08f),
-                    radius = dotRadius,
-                    center = Offset(i * dotSpacing, j * dotSpacing)
-                )
+                    for (i in 0..numCols) {
+                        for (j in 0..numRows) {
+                            drawCircle(
+                                color = dotColor,
+                                radius = dotRadius,
+                                center = Offset(i * dotSpacing, j * dotSpacing)
+                            )
+                        }
+                    }
+                }
             }
         }
+        2 -> {
+            // Cyber Glow (Radial Ambient Accent Light)
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                accentColor.copy(alpha = if (isDark) 0.18f else 0.12f),
+                                if (isDark) Color(0xFF070707) else Color(0xFFF4F4F8),
+                                if (isDark) Color(0xFF000000) else Color(0xFFECECEE)
+                            ),
+                            center = Offset(400f, 600f),
+                            radius = 1200f
+                        )
+                    )
+            )
+        }
+        3 -> {
+            // Frosted Mesh Gradient
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = if (isDark) {
+                                listOf(Color(0xFF140808), Color(0xFF080812), Color(0xFF000000))
+                            } else {
+                                listOf(Color(0xFFFFFFFF), Color(0xFFF2F5FF), Color(0xFFECEFF5))
+                            },
+                            start = Offset(0f, 0f),
+                            end = Offset(1000f, 1800f)
+                        )
+                    )
+            )
+        }
+        4 -> {
+            // Modern Technical Grid
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0xFF050505) else Color(0xFFF4F4F6))
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val gridAlpha = if (isDark) 0.05f else 0.04f
+                    val step = 28.dp.toPx()
+                    var x = 0f
+                    while (x < size.width) {
+                        drawLine(
+                            if (isDark) Color.White.copy(alpha = gridAlpha) else Color.Black.copy(alpha = gridAlpha),
+                            Offset(x, 0f),
+                            Offset(x, size.height),
+                            strokeWidth = 1f
+                        )
+                        x += step
+                    }
+                    var y = 0f
+                    while (y < size.height) {
+                        drawLine(
+                            if (isDark) Color.White.copy(alpha = gridAlpha) else Color.Black.copy(alpha = gridAlpha),
+                            Offset(0f, y),
+                            Offset(size.width, y),
+                            strokeWidth = 1f
+                        )
+                        y += step
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Reusable Glass / Card Modifier
+ */
+fun Modifier.glyphCardStyle(
+    isDark: Boolean,
+    isGlass: Boolean,
+    cornerRadius: Float = 24f,
+    activeBorderColor: Color? = null
+): Modifier {
+    val shape = RoundedCornerShape(cornerRadius.dp)
+    val bgColor = if (isGlass) {
+        if (isDark) Color(0x99161616) else Color(0xCCFFFFFF)
+    } else {
+        if (isDark) Color(0xFF151515) else Color(0xFFFFFFFF)
+    }
+
+    val borderColor = activeBorderColor ?: if (isGlass) {
+        if (isDark) Color(0x33FFFFFF) else Color(0x1F000000)
+    } else {
+        if (isDark) Color(0xFF222222) else Color(0x1A000000)
+    }
+
+    return this
+        .shadow(if (isDark) 8.dp else 4.dp, shape, ambientColor = if (isDark) Color.Black else Color(0x1A000000))
+        .clip(shape)
+        .background(bgColor)
+        .border(1.dp, borderColor, shape)
+}
+
+/**
+ * Floating Pill Navigation Bar
+ */
+@Composable
+fun FloatingBottomBar(
+    currentScreen: Screen,
+    onSelectScreen: (Screen) -> Unit,
+    isDark: Boolean,
+    accentColor: Color,
+    isGlass: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val barBg = if (isGlass) {
+        if (isDark) Color(0xD9181818) else Color(0xF2FFFFFF)
+    } else {
+        if (isDark) Color(0xFF151515) else Color(0xFFFFFFFF)
+    }
+
+    val barBorder = if (isDark) Color(0x33FFFFFF) else Color(0x1F000000)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(16.dp, RoundedCornerShape(36.dp), ambientColor = Color.Black.copy(alpha = 0.35f))
+            .clip(RoundedCornerShape(36.dp))
+            .background(barBg)
+            .border(1.dp, barBorder, RoundedCornerShape(36.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FloatingBarItem(
+                title = stringResource(R.string.nav_visuals),
+                icon = Icons.Default.Tune,
+                isSelected = currentScreen == Screen.Main,
+                accentColor = accentColor,
+                isDark = isDark,
+                onClick = { onSelectScreen(Screen.Main) },
+                testTag = "nav_tab_visuals"
+            )
+
+            FloatingBarItem(
+                title = stringResource(R.string.nav_patterns),
+                icon = Icons.Default.NotificationsActive,
+                isSelected = currentScreen == Screen.Call,
+                accentColor = accentColor,
+                isDark = isDark,
+                onClick = { onSelectScreen(Screen.Call) },
+                testTag = "nav_tab_patterns"
+            )
+
+            FloatingBarItem(
+                title = stringResource(R.string.nav_timer),
+                icon = Icons.Default.HourglassBottom,
+                isSelected = currentScreen == Screen.Timer,
+                accentColor = accentColor,
+                isDark = isDark,
+                onClick = { onSelectScreen(Screen.Timer) },
+                testTag = "nav_tab_timer"
+            )
+
+            FloatingBarItem(
+                title = stringResource(R.string.nav_settings),
+                icon = Icons.Default.Settings,
+                isSelected = currentScreen == Screen.Settings,
+                accentColor = accentColor,
+                isDark = isDark,
+                onClick = { onSelectScreen(Screen.Settings) },
+                testTag = "nav_tab_settings"
+            )
+        }
+    }
+}
+
+@Composable
+fun FloatingBarItem(
+    title: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    accentColor: Color,
+    isDark: Boolean,
+    onClick: () -> Unit,
+    testTag: String
+) {
+    val unselectedColor = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93)
+    val itemBg by animateColorAsState(
+        targetValue = if (isSelected) accentColor else Color.Transparent,
+        label = "itemBg"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (isSelected) Color.White else unselectedColor,
+        label = "iconTint"
+    )
+
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag(testTag),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .width(48.dp)
+                .height(28.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(itemBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = iconTint,
+                modifier = Modifier.size(17.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = title,
+            fontSize = 9.5.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            color = if (isSelected) (if (isDark) Color.White else Color.Black) else unselectedColor
+        )
     }
 }
 
@@ -239,14 +518,17 @@ fun GlyphPhonePreview(
     isTorchOn: Boolean,
     isVisualizerOn: Boolean,
     activeTimerSeconds: Int,
+    isDark: Boolean,
+    accentColor: Color,
+    isGlass: Boolean,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
+        initialValue = 0.35f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1100, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulseAlpha"
@@ -255,58 +537,28 @@ fun GlyphPhonePreview(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(32.dp))
-            .background(GlyphSurfaceDark)
-            .border(1.dp, GlyphCardBorderSubtle, RoundedCornerShape(32.dp))
+            .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 32f)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        DotMatrixGrid(modifier = Modifier.matchParentSize())
-
         // Phone Frame Representation
         Box(
             modifier = Modifier
                 .width(180.dp)
-                .height(230.dp)
+                .height(224.dp)
                 .clip(RoundedCornerShape(36.dp))
-                .background(GlyphPhoneFrame)
-                .border(3.dp, GlyphPhoneBorder, RoundedCornerShape(36.dp))
+                .background(if (isDark) Color(0xFF111111) else Color(0xFF222226))
+                .border(3.dp, if (isDark) Color(0xFF2E2E32) else Color(0xFF3E3E42), RoundedCornerShape(36.dp))
                 .padding(12.dp),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val gridAlpha = 0.04f
-                val step = 12.dp.toPx()
-                var x = 0f
-                while (x < size.width) {
-                    drawLine(Color.White.copy(alpha = gridAlpha), Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-                    x += step
-                }
-                var y = 0f
-                while (y < size.height) {
-                    drawLine(Color.White.copy(alpha = gridAlpha), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-                    y += step
-                }
-            }
-
-            // Top-left Red Recording/Status Dot
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 4.dp, start = 8.dp)
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(if (isPoweredOn) GlyphRed else Color(0xFF441010))
-                    .border(1.dp, if (isPoweredOn) GlyphRed.copy(alpha = 0.6f) else Color.Transparent, CircleShape)
-            )
-
-            // Top Right Glyph LED
+            // Diagonal Strip LEDs (Top Right)
             val topLedAlpha = if (!isPoweredOn) 0.1f else if (isTorchOn) 1f else brightness.coerceIn(0.2f, 1f)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 18.dp, end = 12.dp)
-                    .width(44.dp)
+                    .padding(top = 16.dp, end = 10.dp)
+                    .width(42.dp)
                     .height(5.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(Color.White.copy(alpha = topLedAlpha))
@@ -315,6 +567,16 @@ fun GlyphPhonePreview(
                             Modifier.shadow(8.dp, RoundedCornerShape(3.dp), ambientColor = Color.White, spotColor = Color.White)
                         } else Modifier
                     )
+            )
+
+            // Red Recording Status Dot
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 4.dp, start = 8.dp)
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(if (isPoweredOn) accentColor else Color(0xFF441010))
             )
 
             // Center Ring Glyph LED
@@ -339,7 +601,7 @@ fun GlyphPhonePreview(
                     if (isPoweredOn && ringLedAlpha > 0.4f) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             drawCircle(
-                                color = Color.White.copy(alpha = ringLedAlpha * 0.15f),
+                                color = Color.White.copy(alpha = ringLedAlpha * 0.18f),
                                 radius = size.minDimension / 2
                             )
                         }
@@ -347,7 +609,7 @@ fun GlyphPhonePreview(
                 }
             }
 
-            // Bottom Vertical Glyph LED
+            // Bottom Vertical Glyph LED Ladder
             val timerProgress = if (activeTimerSeconds >= 0) (activeTimerSeconds % 60) / 60f else 1f
             val bottomLedHeight = if (activeTimerSeconds >= 0) (34 * timerProgress).coerceIn(4f, 34f).dp else 34.dp
             val bottomLedAlpha = if (!isPoweredOn) 0.1f else brightness.coerceIn(0.2f, 1f)
@@ -374,7 +636,7 @@ fun GlyphPhonePreview(
                 text = stringResource(R.string.status_label),
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
-                color = GlyphTextMuted,
+                color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93),
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 1.5.sp
             )
@@ -383,7 +645,7 @@ fun GlyphPhonePreview(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isPoweredOn) GlyphStatusGreen else GlyphTextMuted,
+                color = if (isPoweredOn) Color(0xFF00FF41) else Color(0xFF888888),
                 letterSpacing = 1.sp
             )
         }
@@ -399,6 +661,9 @@ fun HighDensityBrightnessCard(
     onBrightnessChange: (Float) -> Unit,
     autoBrightness: Boolean,
     onAutoBrightnessChange: (Boolean) -> Unit,
+    isDark: Boolean,
+    accentColor: Color,
+    isGlass: Boolean,
     modifier: Modifier = Modifier
 ) {
     var cardWidthPx by remember { mutableFloatStateOf(1f) }
@@ -406,9 +671,7 @@ fun HighDensityBrightnessCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(GlyphCardDark)
-            .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(24.dp))
+            .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
             .padding(18.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -420,7 +683,7 @@ fun HighDensityBrightnessCard(
                     text = stringResource(R.string.brightness_title),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
-                    color = GlyphTextSecondaryDark
+                    color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
@@ -428,7 +691,7 @@ fun HighDensityBrightnessCard(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = GlyphTextPrimaryDark
+                    color = if (isDark) Color.White else Color.Black
                 )
             }
 
@@ -440,7 +703,7 @@ fun HighDensityBrightnessCard(
                     .fillMaxWidth()
                     .height(48.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(GlyphSliderBg)
+                    .background(if (isDark) Color(0xFF222222) else Color(0xFFE5E5EA))
                     .onSizeChanged { cardWidthPx = it.width.toFloat().coerceAtLeast(1f) }
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
@@ -462,7 +725,7 @@ fun HighDensityBrightnessCard(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(fraction = brightness.coerceIn(0.05f, 1f))
-                        .background(Color.White.copy(alpha = 0.92f))
+                        .background(if (isDark) Color.White.copy(alpha = 0.95f) else accentColor)
                 )
 
                 Row(
@@ -475,13 +738,13 @@ fun HighDensityBrightnessCard(
                     Icon(
                         imageVector = Icons.Default.BrightnessMedium,
                         contentDescription = "Min Brightness",
-                        tint = if (brightness > 0.15f) Color.Black else Color.White,
+                        tint = if (brightness > 0.15f) (if (isDark) Color.Black else Color.White) else (if (isDark) Color.White else Color.Black),
                         modifier = Modifier.size(18.dp)
                     )
                     Icon(
                         imageVector = Icons.Default.Tune,
                         contentDescription = "Max Brightness",
-                        tint = if (brightness > 0.88f) Color.Black else Color.White,
+                        tint = if (brightness > 0.88f) (if (isDark) Color.Black else Color.White) else (if (isDark) Color.White else Color.Black),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -498,7 +761,7 @@ fun HighDensityBrightnessCard(
                 Text(
                     text = stringResource(R.string.auto_brightness_desc),
                     fontSize = 12.sp,
-                    color = GlyphTextSecondaryDark,
+                    color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70),
                     modifier = Modifier.weight(1f)
                 )
                 Switch(
@@ -507,9 +770,9 @@ fun HighDensityBrightnessCard(
                     modifier = Modifier.testTag("toggle_auto_brightness"),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = GlyphRed,
+                        checkedTrackColor = accentColor,
                         uncheckedThumbColor = Color.LightGray,
-                        uncheckedTrackColor = GlyphSliderBg
+                        uncheckedTrackColor = if (isDark) Color(0xFF2E2E32) else Color(0xFFD1D1D6)
                     )
                 )
             }
@@ -518,29 +781,26 @@ fun HighDensityBrightnessCard(
 }
 
 /**
- * Grid Action Card
+ * Feature Grid Tile (2x2 Box Style Card)
  */
 @Composable
-fun HighDensityActionCard(
+fun FeatureGridTile(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    isActive: Boolean = false,
-    onClick: () -> Unit,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+    isDark: Boolean,
+    accentColor: Color,
+    isGlass: Boolean,
     testTag: String,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(GlyphCardDark)
-            .border(
-                1.dp,
-                if (isActive) GlyphRed.copy(alpha = 0.5f) else GlyphCardBorderDark,
-                RoundedCornerShape(24.dp)
-            )
-            .clickable(onClick = onClick)
-            .padding(14.dp)
+            .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+            .clickable { onToggle(!checked) }
+            .padding(16.dp)
             .testTag(testTag)
     ) {
         Column(
@@ -550,50 +810,47 @@ fun HighDensityActionCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
-                        .background(if (isActive) GlyphRed else GlyphSliderBg),
+                        .background(if (checked) accentColor.copy(alpha = 0.15f) else (if (isDark) Color(0xFF222222) else Color(0xFFE5E5EA))),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (checked) accentColor else (if (isDark) Color.White else Color.Black),
+                        modifier = Modifier.size(22.dp)
                     )
                 }
-
-                if (isActive) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(GlyphRed)
+                Switch(
+                    checked = checked,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = accentColor,
+                        uncheckedThumbColor = Color.LightGray,
+                        uncheckedTrackColor = if (isDark) Color(0xFF2E2E32) else Color(0xFFD1D1D6)
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Column {
-                Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = GlyphTextPrimaryDark
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    color = GlyphTextSecondaryDark,
-                    lineHeight = 13.sp
                 )
             }
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70),
+                lineHeight = 14.sp
+            )
         }
     }
 }
@@ -608,6 +865,8 @@ fun HighDensityToggleRow(
     subtitle: String? = null,
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
+    isDark: Boolean,
+    accentColor: Color,
     testTag: String,
     modifier: Modifier = Modifier
 ) {
@@ -621,13 +880,13 @@ fun HighDensityToggleRow(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(GlyphSliderBg),
+                .background(if (isDark) Color(0xFF222222) else Color(0xFFE5E5EA)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (checked) GlyphRed else Color.White,
+                tint = if (checked) accentColor else (if (isDark) Color.White else Color.Black),
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -637,13 +896,13 @@ fun HighDensityToggleRow(
                 text = title,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
-                color = GlyphTextPrimaryDark
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     fontSize = 10.sp,
-                    color = GlyphTextSecondaryDark
+                    color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
                 )
             }
         }
@@ -653,132 +912,11 @@ fun HighDensityToggleRow(
             modifier = Modifier.testTag(testTag),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = GlyphRed,
+                checkedTrackColor = accentColor,
                 uncheckedThumbColor = Color.LightGray,
-                uncheckedTrackColor = GlyphSliderBg
+                uncheckedTrackColor = if (isDark) Color(0xFF2E2E32) else Color(0xFFD1D1D6)
             )
         )
-    }
-}
-
-/**
- * Bottom Navigation Bar
- */
-@Composable
-fun HighDensityBottomBar(
-    currentScreen: Screen,
-    onSelectScreen: (Screen) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color.Black)
-            .border(width = 1.dp, color = Color(0xFF1A1A1A))
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Visuals Tab
-            Column(
-                modifier = Modifier
-                    .clickable { onSelectScreen(Screen.Main) }
-                    .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val isSelected = currentScreen == Screen.Main
-                Box(
-                    modifier = Modifier
-                        .width(46.dp)
-                        .height(30.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(if (isSelected) Color.White else Color.Transparent),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.BrightnessMedium,
-                        contentDescription = stringResource(R.string.nav_visuals),
-                        tint = if (isSelected) Color.Black else GlyphTextSecondaryDark,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = stringResource(R.string.nav_visuals),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSelected) Color.White else GlyphTextSecondaryDark
-                )
-            }
-
-            // Patterns Tab
-            Column(
-                modifier = Modifier
-                    .clickable { onSelectScreen(Screen.Call) }
-                    .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val isSelected = currentScreen == Screen.Call
-                Box(
-                    modifier = Modifier
-                        .width(46.dp)
-                        .height(30.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(if (isSelected) Color.White else Color.Transparent),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = stringResource(R.string.nav_patterns),
-                        tint = if (isSelected) Color.Black else GlyphTextSecondaryDark,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = stringResource(R.string.nav_patterns),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSelected) Color.White else GlyphTextSecondaryDark
-                )
-            }
-
-            // Timer Tab
-            Column(
-                modifier = Modifier
-                    .clickable { onSelectScreen(Screen.Timer) }
-                    .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val isSelected = currentScreen == Screen.Timer
-                Box(
-                    modifier = Modifier
-                        .width(46.dp)
-                        .height(30.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(if (isSelected) Color.White else Color.Transparent),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.HourglassBottom,
-                        contentDescription = stringResource(R.string.nav_timer),
-                        tint = if (isSelected) Color.Black else GlyphTextSecondaryDark,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = stringResource(R.string.nav_timer),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSelected) Color.White else GlyphTextSecondaryDark
-                )
-            }
-        }
     }
 }
 
@@ -787,16 +925,17 @@ fun HighDensityBottomBar(
  */
 @Composable
 fun GlyphMainScreen(
-    onNavigateToTimer: () -> Unit,
-    onNavigateToCall: () -> Unit
+    isDark: Boolean
 ) {
     val context = LocalContext.current
+    val accentColor = AppSettings.currentAccentColor
+    val isGlass = AppSettings.isGlassEffect
 
     var mainToggle by remember { mutableStateOf(RootUtils.isMainEnabled) }
     var brightness by remember { mutableFloatStateOf(RootUtils.globalBrightness) }
     var autoBrightness by remember { mutableStateOf(NotificationService.autoBrightnessEnabled) }
     var torchToggle by remember { mutableStateOf(NotificationService.isTorchOn) }
-    var volumeToggle by remember { mutableStateOf(true) }
+    var volumeToggle by remember { mutableStateOf(NotificationService.volumeIndicatorEnabled) }
     var visualizerToggle by remember { mutableStateOf(MusicVisualizerService.isRunning) }
     var musicProgressToggle by remember { mutableStateOf(false) }
     var flipToGlyphToggle by remember { mutableStateOf(NotificationService.flipToGlyphEnabled) }
@@ -805,14 +944,31 @@ fun GlyphMainScreen(
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         val volumeReceiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context?, intent: Intent?) {
-                if (volumeToggle && intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                if (volumeToggle && (intent?.action == "android.media.VOLUME_CHANGED_ACTION" || intent?.action == "android.media.EXTRA_VOLUME_STREAM_VALUE")) {
                     val currentVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                    RootUtils.updateVolumeIndicator(currentVolume)
+                    val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
+                    RootUtils.updateVolumeIndicator(currentVolume, maxVolume)
                 }
             }
         }
         if (volumeToggle) {
-            context.registerReceiver(volumeReceiver, IntentFilter("android.media.VOLUME_CHANGED_ACTION"))
+            val filter = IntentFilter().apply {
+                addAction("android.media.VOLUME_CHANGED_ACTION")
+                addAction("android.media.EXTRA_VOLUME_STREAM_VALUE")
+            }
+            try {
+                ContextCompat.registerReceiver(
+                    context,
+                    volumeReceiver,
+                    filter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+                )
+            } catch (e: Exception) {
+                // Fallback for older systems or edge cases
+                try {
+                    context.registerReceiver(volumeReceiver, filter)
+                } catch (_: Exception) {}
+            }
         }
         onDispose {
             if (volumeToggle) {
@@ -845,7 +1001,7 @@ fun GlyphMainScreen(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 2.sp,
-                        color = GlyphTextSecondaryDark
+                        color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -853,17 +1009,17 @@ fun GlyphMainScreen(
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Light,
                         letterSpacing = (-0.5).sp,
-                        color = GlyphTextPrimaryDark
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
                     )
                 }
 
                 // Master Power Toggle
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
-                        .background(if (mainToggle) GlyphCardSubtle else GlyphCardDark)
-                        .border(1.dp, if (mainToggle) GlyphRed.copy(alpha = 0.5f) else GlyphCardBorderDark, CircleShape)
+                        .background(if (mainToggle) accentColor else (if (isDark) Color(0xFF1A1A1A) else Color(0xFFE5E5EA)))
+                        .border(1.dp, if (mainToggle) accentColor else (if (isDark) Color(0xFF333333) else Color(0xFFD1D1D6)), CircleShape)
                         .clickable {
                             val next = !mainToggle
                             mainToggle = next
@@ -879,7 +1035,7 @@ fun GlyphMainScreen(
                     Icon(
                         imageVector = Icons.Default.PowerSettingsNew,
                         contentDescription = "Toggle Glyph System",
-                        tint = if (mainToggle) GlyphRed else GlyphTextMuted,
+                        tint = if (mainToggle) Color.White else (if (isDark) Color(0xFF777777) else Color(0xFF8E8E93)),
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -893,7 +1049,10 @@ fun GlyphMainScreen(
                 brightness = brightness,
                 isTorchOn = torchToggle,
                 isVisualizerOn = visualizerToggle,
-                activeTimerSeconds = NotificationService.activeTimerSeconds
+                activeTimerSeconds = NotificationService.activeTimerSeconds,
+                isDark = isDark,
+                accentColor = accentColor,
+                isGlass = isGlass
             )
         }
 
@@ -912,32 +1071,56 @@ fun GlyphMainScreen(
                 onAutoBrightnessChange = {
                     autoBrightness = it
                     NotificationService.autoBrightnessEnabled = it
-                }
+                },
+                isDark = isDark,
+                accentColor = accentColor,
+                isGlass = isGlass
             )
         }
 
-        // 2-Column Action Cards
+        // 2x2 Style Quick Action Cards (Glyph Torch & Music Visualizer)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                HighDensityActionCard(
-                    icon = Icons.Default.NotificationsActive,
-                    title = stringResource(R.string.feature_essential_title),
-                    subtitle = stringResource(R.string.feature_essential_sub),
-                    onClick = onNavigateToCall,
-                    testTag = "action_patterns",
+                FeatureGridTile(
+                    icon = Icons.Default.FlashlightOn,
+                    title = stringResource(R.string.feature_torch_title),
+                    subtitle = stringResource(R.string.feature_torch_sub),
+                    checked = torchToggle,
+                    onToggle = {
+                        torchToggle = it
+                        NotificationService.isTorchOn = it
+                        context.startService(Intent(context, NotificationService::class.java))
+                        RootUtils.setGlyphBrightness(if (it) (RootUtils.globalBrightness * 255).toInt() else 0)
+                    },
+                    isDark = isDark,
+                    accentColor = accentColor,
+                    isGlass = isGlass,
+                    testTag = "toggle_torch",
                     modifier = Modifier.weight(1f)
                 )
 
-                HighDensityActionCard(
-                    icon = Icons.Default.HourglassBottom,
-                    title = stringResource(R.string.feature_timer_title),
-                    subtitle = stringResource(R.string.feature_timer_sub),
-                    isActive = NotificationService.activeTimerSeconds >= 0,
-                    onClick = onNavigateToTimer,
-                    testTag = "action_timer",
+                FeatureGridTile(
+                    icon = Icons.Default.GraphicEq,
+                    title = stringResource(R.string.feature_visualizer_title),
+                    subtitle = stringResource(R.string.feature_visualizer_sub),
+                    checked = visualizerToggle,
+                    onToggle = {
+                        visualizerToggle = it
+                        val intent = Intent(context, MusicVisualizerService::class.java)
+                        if (it) {
+                            context.startService(intent)
+                        } else {
+                            context.stopService(intent)
+                            RootUtils.clearAllLeds()
+                        }
+                    },
+                    isDark = isDark,
+                    accentColor = accentColor,
+                    isGlass = isGlass,
+                    testTag = "toggle_visualizer",
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -948,9 +1131,7 @@ fun GlyphMainScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(GlyphCardDark)
-                    .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(24.dp))
+                    .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
                     .padding(16.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -960,40 +1141,8 @@ fun GlyphMainScreen(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.5.sp,
-                        color = GlyphTextMuted,
+                        color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93),
                         modifier = Modifier.padding(bottom = 6.dp)
-                    )
-
-                    HighDensityToggleRow(
-                        icon = Icons.Default.FlashlightOn,
-                        title = stringResource(R.string.feature_torch_title),
-                        subtitle = stringResource(R.string.feature_torch_sub),
-                        checked = torchToggle,
-                        onToggle = {
-                            torchToggle = it
-                            NotificationService.isTorchOn = it
-                            context.startService(Intent(context, NotificationService::class.java))
-                            RootUtils.setGlyphBrightness(if (it) (RootUtils.globalBrightness * 255).toInt() else 0)
-                        },
-                        testTag = "toggle_torch"
-                    )
-
-                    HighDensityToggleRow(
-                        icon = Icons.Default.GraphicEq,
-                        title = stringResource(R.string.feature_visualizer_title),
-                        subtitle = stringResource(R.string.feature_visualizer_sub),
-                        checked = visualizerToggle,
-                        onToggle = {
-                            visualizerToggle = it
-                            val intent = Intent(context, MusicVisualizerService::class.java)
-                            if (it) {
-                                context.startService(intent)
-                            } else {
-                                context.stopService(intent)
-                                RootUtils.clearAllLeds()
-                            }
-                        },
-                        testTag = "toggle_visualizer"
                     )
 
                     HighDensityToggleRow(
@@ -1001,7 +1150,13 @@ fun GlyphMainScreen(
                         title = stringResource(R.string.feature_volume_title),
                         subtitle = stringResource(R.string.feature_volume_sub),
                         checked = volumeToggle,
-                        onToggle = { volumeToggle = it },
+                        onToggle = {
+                            volumeToggle = it
+                            NotificationService.volumeIndicatorEnabled = it
+                            context.startService(Intent(context, NotificationService::class.java))
+                        },
+                        isDark = isDark,
+                        accentColor = accentColor,
                         testTag = "toggle_volume_level"
                     )
 
@@ -1011,6 +1166,8 @@ fun GlyphMainScreen(
                         subtitle = stringResource(R.string.feature_music_progress_sub),
                         checked = musicProgressToggle,
                         onToggle = { musicProgressToggle = it },
+                        isDark = isDark,
+                        accentColor = accentColor,
                         testTag = "toggle_music_progress"
                     )
 
@@ -1022,7 +1179,10 @@ fun GlyphMainScreen(
                         onToggle = {
                             flipToGlyphToggle = it
                             NotificationService.flipToGlyphEnabled = it
+                            context.startService(Intent(context, NotificationService::class.java))
                         },
+                        isDark = isDark,
+                        accentColor = accentColor,
                         testTag = "toggle_flip_to_glyph"
                     )
                 }
@@ -1036,9 +1196,12 @@ fun GlyphMainScreen(
  */
 @Composable
 fun GlyphCallScreen(
+    isDark: Boolean,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val accentColor = AppSettings.currentAccentColor
+    val isGlass = AppSettings.isGlassEffect
 
     val patterns = listOf(
         "Abra", "Anna", "Beetle", "Clwb", "Coded", "Crossing",
@@ -1083,7 +1246,7 @@ fun GlyphCallScreen(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = GlyphTextPrimaryDark
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E)
                 )
             }
             Spacer(modifier = Modifier.width(6.dp))
@@ -1094,25 +1257,25 @@ fun GlyphCallScreen(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp,
-                    color = GlyphTextSecondaryDark
+                    color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
                 )
                 Text(
                     text = stringResource(R.string.ringtone_patterns_title),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Light,
-                    color = GlyphTextPrimaryDark
+                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
                 )
             }
         }
 
-        // Preview Card
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Selected Pattern Card & Play Button
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(GlyphCardDark)
-                .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(24.dp))
-                .padding(18.dp)
+                .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+                .padding(20.dp)
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -1122,7 +1285,7 @@ fun GlyphCallScreen(
                     text = stringResource(R.string.current_pattern_label),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
-                    color = GlyphTextMuted,
+                    color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93),
                     letterSpacing = 1.2.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1130,7 +1293,7 @@ fun GlyphCallScreen(
                     text = selectedPattern,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
-                    color = GlyphTextPrimaryDark
+                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 Button(
@@ -1144,7 +1307,7 @@ fun GlyphCallScreen(
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isPreviewPlaying) GlyphRed else Color.White
+                        containerColor = if (isPreviewPlaying) accentColor else (if (isDark) Color.White else Color.Black)
                     ),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
@@ -1154,7 +1317,7 @@ fun GlyphCallScreen(
                     Icon(
                         imageVector = if (isPreviewPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
                         contentDescription = if (isPreviewPlaying) "Stop" else "Play",
-                        tint = if (isPreviewPlaying) Color.White else Color.Black
+                        tint = if (isPreviewPlaying) Color.White else (if (isDark) Color.Black else Color.White)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -1162,7 +1325,7 @@ fun GlyphCallScreen(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        color = if (isPreviewPlaying) Color.White else Color.Black
+                        color = if (isPreviewPlaying) Color.White else (if (isDark) Color.Black else Color.White)
                     )
                 }
             }
@@ -1181,12 +1344,11 @@ fun GlyphCallScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(if (isSelected) GlyphCardSubtle else GlyphCardDark)
-                        .border(
-                            1.dp,
-                            if (isSelected) GlyphRed.copy(alpha = 0.6f) else GlyphCardBorderDark,
-                            RoundedCornerShape(18.dp)
+                        .glyphCardStyle(
+                            isDark = isDark,
+                            isGlass = isGlass,
+                            cornerRadius = 18f,
+                            activeBorderColor = if (isSelected) accentColor else null
                         )
                         .clickable {
                             selectedPattern = pattern
@@ -1205,15 +1367,15 @@ fun GlyphCallScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (isSelected) GlyphRed else Color.Transparent)
-                                .border(2.dp, if (isSelected) GlyphRed else Color(0xFF444444), CircleShape)
+                                .background(if (isSelected) accentColor else Color.Transparent)
+                                .border(2.dp, if (isSelected) accentColor else (if (isDark) Color(0xFF444444) else Color(0xFFC7C7CC)), CircleShape)
                         )
                         Spacer(modifier = Modifier.width(14.dp))
                         Text(
                             text = pattern,
                             fontSize = 15.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = GlyphTextPrimaryDark,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
                             modifier = Modifier.weight(1f)
                         )
                         if (isSelected && isPreviewPlaying) {
@@ -1222,7 +1384,7 @@ fun GlyphCallScreen(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlyphRed
+                                color = accentColor
                             )
                         }
                     }
@@ -1237,9 +1399,12 @@ fun GlyphCallScreen(
  */
 @Composable
 fun GlyphTimerScreen(
+    isDark: Boolean,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val accentColor = AppSettings.currentAccentColor
+    val isGlass = AppSettings.isGlassEffect
     val scope = rememberCoroutineScope()
 
     var totalDurationSeconds by remember { mutableIntStateOf(60) }
@@ -1276,7 +1441,7 @@ fun GlyphTimerScreen(
             context.startService(Intent(context, NotificationService::class.java))
 
             val progress = remainingSeconds.toFloat() / totalDurationSeconds.coerceAtLeast(1).toFloat()
-            RootUtils.updateTimerIndicator(progress)
+            RootUtils.updateTimerProgress(progress, isTicking = true)
 
             if (remainingSeconds <= 0) {
                 isRunning = false
@@ -1287,6 +1452,8 @@ fun GlyphTimerScreen(
                 if (!muteAlarm) {
                     ringtone?.play()
                 }
+
+                RootUtils.blinkTimerFinished()
 
                 scope.launch {
                     while (isActive && isAlarmPlaying) {
@@ -1332,7 +1499,7 @@ fun GlyphTimerScreen(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = GlyphTextPrimaryDark
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E)
                 )
             }
             Spacer(modifier = Modifier.width(6.dp))
@@ -1343,26 +1510,24 @@ fun GlyphTimerScreen(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp,
-                    color = GlyphTextSecondaryDark
+                    color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
                 )
                 Text(
                     text = stringResource(R.string.feature_timer_title),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Light,
-                    color = GlyphTextPrimaryDark
+                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Timer Readout
+        // Timer Readout Card
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(GlyphCardDark)
-                .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(24.dp))
+                .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
                 .padding(24.dp)
         ) {
             Column(
@@ -1379,7 +1544,7 @@ fun GlyphTimerScreen(
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Light,
                     letterSpacing = 4.sp,
-                    color = if (isAlarmPlaying) GlyphRed else GlyphTextPrimaryDark,
+                    color = if (isAlarmPlaying) accentColor else (if (isDark) Color.White else Color(0xFF1C1C1E)),
                     textAlign = TextAlign.Center
                 )
 
@@ -1390,13 +1555,13 @@ fun GlyphTimerScreen(
                         .fillMaxWidth()
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(GlyphSliderBg)
+                        .background(if (isDark) Color(0xFF252525) else Color(0xFFE5E5EA))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(fraction = progress.coerceIn(0f, 1f))
-                            .background(if (isAlarmPlaying) GlyphRed else Color.White)
+                            .background(if (isAlarmPlaying) accentColor else (if (isDark) Color.White else accentColor))
                     )
                 }
 
@@ -1408,7 +1573,7 @@ fun GlyphTimerScreen(
                             ringtone?.stop()
                             RootUtils.clearAllLedsSmoothly()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = GlyphRed),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .height(44.dp)
@@ -1439,7 +1604,7 @@ fun GlyphTimerScreen(
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.2.sp,
-            color = GlyphTextMuted
+            color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93)
         )
         Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
@@ -1450,191 +1615,530 @@ fun GlyphTimerScreen(
                 val isSelected = totalDurationSeconds == duration && !isRunning
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isSelected) Color.White else GlyphCardSubtle)
-                        .border(
-                            1.dp,
-                            if (isSelected) Color.White else GlyphCardBorderDark,
-                            RoundedCornerShape(16.dp)
-                        )
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isSelected) accentColor else (if (isDark) Color(0xFF1A1A1A) else Color(0xFFE5E5EA)))
+                        .border(1.dp, if (isSelected) accentColor else (if (isDark) Color(0xFF2E2E32) else Color(0xFFD1D1D6)), RoundedCornerShape(14.dp))
                         .clickable(enabled = !isRunning) {
                             totalDurationSeconds = duration
                             remainingSeconds = duration
                         }
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .padding(horizontal = 18.dp, vertical = 12.dp)
                         .testTag("preset_$label")
                 ) {
                     Text(
                         text = label,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 14.sp,
-                        color = if (isSelected) Color.Black else Color.White
+                        color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E))
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
-        if (!isRunning && !isAlarmPlaying) {
+        // Custom Minutes Input
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedTextField(
+                value = customMinutesInput,
+                onValueChange = {
+                    if (it.length <= 3 && it.all { char -> char.isDigit() }) {
+                        customMinutesInput = it
+                        val mins = it.toIntOrNull() ?: 1
+                        if (mins > 0 && !isRunning) {
+                            totalDurationSeconds = (mins * 60).coerceIn(5, 7200)
+                            remainingSeconds = totalDurationSeconds
+                        }
+                    }
+                },
+                label = {
+                    Text(
+                        stringResource(R.string.custom_timer_label),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                },
+                enabled = !isRunning,
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = accentColor,
+                    unfocusedBorderColor = if (isDark) Color(0xFF333333) else Color(0xFFD1D1D6),
+                    focusedLabelColor = accentColor,
+                    unfocusedLabelColor = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70),
+                    focusedTextColor = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    unfocusedTextColor = if (isDark) Color.White else Color(0xFF1C1C1E)
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("custom_timer_input")
+            )
+
+            Button(
+                onClick = {
+                    if (isRunning) {
+                        isRunning = false
+                        NotificationService.activeTimerSeconds = -1
+                        context.startService(Intent(context, NotificationService::class.java))
+                        RootUtils.clearAllLedsSmoothly()
+                    } else {
+                        isRunning = true
+                        NotificationService.activeTimerSeconds = remainingSeconds
+                        context.startService(Intent(context, NotificationService::class.java))
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isRunning) accentColor else (if (isDark) Color.White else Color.Black)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .height(56.dp)
+                    .testTag("toggle_timer_run_button")
+            ) {
+                Text(
+                    text = if (isRunning) stringResource(R.string.pause_timer) else stringResource(R.string.start_timer),
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isRunning) Color.White else (if (isDark) Color.Black else Color.White)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Settings & Customization Screen
+ */
+@Composable
+fun GlyphSettingsScreen(
+    isDark: Boolean,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val accentColor = AppSettings.currentAccentColor
+    val isGlass = AppSettings.isGlassEffect
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp)
+    ) {
+        // Header
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.testTag("settings_back_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (isDark) Color.White else Color(0xFF1C1C1E)
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.settings_header),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_title),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Light,
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                    )
+                }
+            }
+        }
+
+        // Theme Mode Segmented Controller
+        item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(GlyphCardDark)
-                    .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(20.dp))
-                    .padding(14.dp)
+                    .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+                    .padding(18.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.theme_appearance_title),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isDark) Color(0xFF222222) else Color(0xFFE5E5EA))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        ThemeModeOption(
+                            label = stringResource(R.string.theme_mode_system),
+                            icon = Icons.Default.SettingsBrightness,
+                            isSelected = AppSettings.themeMode == ThemeMode.SYSTEM,
+                            accentColor = accentColor,
+                            isDark = isDark,
+                            onClick = { AppSettings.setTheme(ThemeMode.SYSTEM) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeModeOption(
+                            label = stringResource(R.string.theme_mode_dark),
+                            icon = Icons.Default.DarkMode,
+                            isSelected = AppSettings.themeMode == ThemeMode.DARK,
+                            accentColor = accentColor,
+                            isDark = isDark,
+                            onClick = { AppSettings.setTheme(ThemeMode.DARK) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeModeOption(
+                            label = stringResource(R.string.theme_mode_light),
+                            icon = Icons.Default.LightMode,
+                            isSelected = AppSettings.themeMode == ThemeMode.LIGHT,
+                            accentColor = accentColor,
+                            isDark = isDark,
+                            onClick = { AppSettings.setTheme(ThemeMode.LIGHT) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Glassmorphism Effect Card
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+                    .padding(18.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Custom Duration (min):",
-                        fontSize = 14.sp,
-                        color = GlyphTextSecondaryDark,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = customMinutesInput,
-                        onValueChange = { input ->
-                            if (input.length <= 3 && input.all { it.isDigit() }) {
-                                customMinutesInput = input
-                                val mins = input.toIntOrNull() ?: 1
-                                val clampedMins = mins.coerceIn(1, 180)
-                                totalDurationSeconds = clampedMins * 60
-                                remainingSeconds = totalDurationSeconds
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier
-                            .width(80.dp)
-                            .testTag("custom_minutes_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = GlyphRed,
-                            unfocusedBorderColor = Color(0xFF333333),
-                            focusedTextColor = GlyphTextPrimaryDark,
-                            unfocusedTextColor = GlyphTextPrimaryDark
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.glass_effect_title),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.glass_effect_sub),
+                            fontSize = 11.sp,
+                            color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
+                        )
+                    }
+                    Switch(
+                        checked = AppSettings.isGlassEffect,
+                        onCheckedChange = { AppSettings.setGlass(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accentColor,
+                            uncheckedThumbColor = Color.LightGray,
+                            uncheckedTrackColor = if (isDark) Color(0xFF2E2E32) else Color(0xFFD1D1D6)
+                        ),
+                        modifier = Modifier.testTag("toggle_glass_effect")
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Action Controls
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (!isRunning) {
-                Button(
-                    onClick = {
-                        if (remainingSeconds <= 0) {
-                            remainingSeconds = totalDurationSeconds
-                        }
-                        isRunning = true
-                        isAlarmPlaying = false
-                        NotificationService.activeTimerSeconds = remainingSeconds
-                        context.startService(Intent(context, NotificationService::class.java))
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("start_timer_button")
-                ) {
-                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Start", tint = Color.Black)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        stringResource(R.string.start_timer),
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
-                    )
-                }
-            } else {
-                Button(
-                    onClick = {
-                        isRunning = false
-                        NotificationService.activeTimerSeconds = -1
-                        context.startService(Intent(context, NotificationService::class.java))
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = GlyphSliderBg),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("pause_timer_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Pause,
-                        contentDescription = "Pause",
-                        tint = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        stringResource(R.string.pause_timer),
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
-
-            Button(
-                onClick = {
-                    isRunning = false
-                    isAlarmPlaying = false
-                    remainingSeconds = totalDurationSeconds
-                    NotificationService.activeTimerSeconds = -1
-                    context.startService(Intent(context, NotificationService::class.java))
-                    RootUtils.clearAllLedsSmoothly()
-                    ringtone?.stop()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = GlyphCardSubtle),
-                shape = RoundedCornerShape(20.dp),
+        // Monet & Accent Color Picker
+        item {
+            Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-                    .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(20.dp))
-                    .testTag("reset_timer_button")
+                    .fillMaxWidth()
+                    .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+                    .padding(18.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Stop,
-                    contentDescription = "Reset",
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    stringResource(R.string.reset_timer),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.monet_color_title),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93)
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        itemsIndexed(AppSettings.accentColors) { index, option ->
+                            val isSelected = AppSettings.accentIndex == index
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { AppSettings.setAccent(index) }
+                                    .padding(4.dp)
+                                    .testTag("accent_color_$index")
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(option.color)
+                                        .border(
+                                            2.5.dp,
+                                            if (isSelected) (if (isDark) Color.White else Color.Black) else Color.Transparent,
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = if (option.color == Color.White) Color.Black else Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = option.name,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) (if (isDark) Color.White else Color.Black) else (if (isDark) Color(0xFF888888) else Color(0xFF6C6C70))
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        // Background Wallpaper Selector
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+                .padding(18.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.wallpaper_bg_title),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
 
-        // Mute option
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(GlyphCardDark)
-                .border(1.dp, GlyphCardBorderDark, RoundedCornerShape(20.dp))
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            HighDensityToggleRow(
-                icon = Icons.Default.Timer,
-                title = "Mute Audio Alarm",
-                subtitle = "Only use Glyph flashing notification",
-                checked = muteAlarm,
-                onToggle = { muteAlarm = it },
-                testTag = "toggle_mute_alarm"
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        itemsIndexed(AppSettings.wallpapers) { index, wp ->
+                            val isSelected = AppSettings.wallpaperIndex == index
+                            Box(
+                                modifier = Modifier
+                                    .width(130.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(if (isSelected) accentColor.copy(alpha = 0.2f) else (if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F7)))
+                                    .border(
+                                        1.5.dp,
+                                        if (isSelected) accentColor else (if (isDark) Color(0xFF333333) else Color(0xFFE5E5EA)),
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable { AppSettings.setWallpaper(index) }
+                                    .padding(12.dp)
+                                    .testTag("wallpaper_item_$index")
+                            ) {
+                                Column {
+                                    Icon(
+                                        imageVector = Icons.Default.Wallpaper,
+                                        contentDescription = wp.name,
+                                        tint = if (isSelected) accentColor else (if (isDark) Color.White else Color.Black),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = wp.name,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = wp.description,
+                                        fontSize = 9.sp,
+                                        color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70),
+                                        lineHeight = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Hardware Diagnostics & Root Verification
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glyphCardStyle(isDark = isDark, isGlass = isGlass, cornerRadius = 24f)
+                    .padding(18.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.hardware_diagnostics_title),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        color = if (isDark) Color(0xFF7E7E82) else Color(0xFF8E8E93)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.root_status_label),
+                            fontSize = 12.sp,
+                            color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF00FF41).copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.root_active_msg),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF00FF41)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.sysfs_node_label),
+                            fontSize = 12.sp,
+                            color = if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)
+                        )
+                        Text(
+                            text = stringResource(R.string.sysfs_node_path),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDark) Color.White else Color.Black
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Test Hardware Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                RootUtils.blinkNotification(context)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Test Flash", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        Button(
+                            onClick = {
+                                RootUtils.clearAllLedsSmoothly()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0xFF222222) else Color(0xFFE5E5EA)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Clear LEDs", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color.White else Color.Black)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ThemeModeOption(
+    label: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    accentColor: Color,
+    isDark: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isSelected) accentColor else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (isSelected) Color.White else (if (isDark) Color(0xFF888888) else Color(0xFF6C6C70)),
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) Color.White else (if (isDark) Color(0xFF888888) else Color(0xFF6C6C70))
             )
         }
     }

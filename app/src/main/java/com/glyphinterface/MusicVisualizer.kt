@@ -13,9 +13,10 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * High-Performance Dual-Engine Music Visualizer for Glyph Interface.
- * Combines system Visualizer (Audio Session 0) with low-latency AudioRecord fallback
- * to guarantee 100% reliability regardless of OEM/Android restrictions.
+ * 3-Band Music Visualizer:
+ * 1. Bass: Maps to LEDs 0-31
+ * 2. Vocal: Maps to Mini LED 20
+ * 3. Instruments/High: Maps to Medium LED 33
  */
 class MusicVisualizer(private val context: Context) {
     private var visualizer: Visualizer? = null
@@ -25,18 +26,16 @@ class MusicVisualizer(private val context: Context) {
     @Volatile
     private var isRunning = false
 
-    // Smooth decay values for fluid LED animations
-    private var smoothLow = 0f
-    private var smoothMidLow = 0f
-    private var smoothMid = 0f
-    private var smoothMidHigh = 0f
-    private var smoothHigh = 0f
+    // Smooth filters and dynamic AGC
+    private var smoothBass = 0f
+    private var smoothVocal = 0f
+    private var smoothInstrument = 0f
+    private var peakRms = 1200f
 
-    fun start(onData: (low: Int, midLow: Int, mid: Int, midHigh: Int, high: Int) -> Unit) {
+    fun start(on3BandData: (bass: Int, vocal: Int, instrument: Int) -> Unit) {
         if (isRunning) return
         isRunning = true
 
-        var systemVisualizerStarted = false
         try {
             Log.d(TAG, "Initializing System AudioFx Visualizer...")
             visualizer = Visualizer(0).apply {
@@ -48,35 +47,31 @@ class MusicVisualizer(private val context: Context) {
                 setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                     override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
                         if (waveform != null && isRunning) {
-                            processWaveform(waveform, onData)
+                            processWaveform(waveform, on3BandData)
                         }
                     }
 
                     override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {
                         if (fft != null && isRunning) {
-                            processFft(fft, captureSize, samplingRate, onData)
+                            processFft(fft, captureSize, samplingRate, on3BandData)
                         }
                     }
-                }, Visualizer.getMaxCaptureRate(), true, true)
+                }, Visualizer.getMaxCaptureRate() / 2, true, true)
 
                 enabled = true
             }
-            systemVisualizerStarted = true
-            Log.d(TAG, "System AudioFx Visualizer started successfully")
+            Log.d(TAG, "System AudioFx Visualizer initialized")
         } catch (e: Exception) {
-            Log.w(TAG, "System Visualizer failed (${e.message}), launching AudioRecord engine.")
-            systemVisualizerStarted = false
+            Log.w(TAG, "System Visualizer failed (${e.message}).")
         }
 
-        // If system visualizer failed or to provide background microphone/ambient fallback
-        if (!systemVisualizerStarted) {
-            startAudioRecordFallback(onData)
-        }
+        // Always start high-sensitivity audio record fallback to guarantee responsiveness
+        startAudioRecordFallback(on3BandData)
     }
 
     private fun processWaveform(
         waveform: ByteArray,
-        onData: (low: Int, midLow: Int, mid: Int, midHigh: Int, high: Int) -> Unit
+        on3BandData: (bass: Int, vocal: Int, instrument: Int) -> Unit
     ) {
         var sumSquares = 0.0
         for (b in waveform) {
@@ -84,87 +79,75 @@ class MusicVisualizer(private val context: Context) {
             sumSquares += sample * sample
         }
         val rms = sqrt(sumSquares / waveform.size).toFloat()
-        val energy = (rms * 3.2f).coerceIn(0f, 255f)
+        if (rms < 2.0f) return // likely silent or muted buffer
 
-        smoothLow = max(energy * 1.1f, smoothLow * 0.82f).coerceIn(0f, 255f)
-        smoothMidLow = max(energy * 0.95f, smoothMidLow * 0.80f).coerceIn(0f, 255f)
-        smoothMid = max(energy * 0.85f, smoothMid * 0.78f).coerceIn(0f, 255f)
-        smoothMidHigh = max(energy * 0.75f, smoothMidHigh * 0.75f).coerceIn(0f, 255f)
-        smoothHigh = max(energy * 0.65f, smoothHigh * 0.72f).coerceIn(0f, 255f)
+        val energy = (rms * 5.0f).coerceIn(0f, 255f)
 
-        onData(
-            smoothLow.toInt(),
-            smoothMidLow.toInt(),
-            smoothMid.toInt(),
-            smoothMidHigh.toInt(),
-            smoothHigh.toInt()
-        )
+        smoothBass = max(energy * 1.2f, smoothBass * 0.70f).coerceIn(0f, 255f)
+        smoothVocal = max(energy * 1.0f, smoothVocal * 0.65f).coerceIn(0f, 255f)
+        smoothInstrument = max(energy * 0.8f, smoothInstrument * 0.60f).coerceIn(0f, 255f)
+
+        on3BandData(smoothBass.toInt(), smoothVocal.toInt(), smoothInstrument.toInt())
     }
 
     private fun processFft(
         fft: ByteArray,
         captureSize: Int,
         samplingRate: Int,
-        onData: (low: Int, midLow: Int, mid: Int, midHigh: Int, high: Int) -> Unit
+        on3BandData: (bass: Int, vocal: Int, instrument: Int) -> Unit
     ) {
         val n = fft.size / 2
         if (n <= 0) return
 
         val magnitudes = FloatArray(n)
         magnitudes[0] = abs(fft[0].toInt()).toFloat()
+        var totalMag = magnitudes[0]
         for (k in 1 until n) {
             val rIndex = k * 2
             val iIndex = rIndex + 1
             if (iIndex < fft.size) {
                 magnitudes[k] = hypot(fft[rIndex].toFloat(), fft[iIndex].toFloat())
+                totalMag += magnitudes[k]
             }
         }
+        if (totalMag < 5.0f) return // silent buffer
 
         val binFreq = (samplingRate / 1000f) / captureSize.coerceAtLeast(1)
-        var lowEnergy = 0f
-        var midLowEnergy = 0f
-        var midEnergy = 0f
-        var midHighEnergy = 0f
-        var highEnergy = 0f
+        var bassSum = 0f
+        var vocalSum = 0f
+        var instrumentSum = 0f
 
         for (k in 1 until n) {
             val freq = k * binFreq * 1000f
             val mag = magnitudes[k]
             when {
-                freq < 160f -> lowEnergy += mag * 1.5f
-                freq in 160f..500f -> midLowEnergy += mag * 1.2f
-                freq in 500f..2200f -> midEnergy += mag * 1.0f
-                freq in 2200f..5500f -> midHighEnergy += mag * 0.9f
-                else -> highEnergy += mag * 0.8f
+                freq < 240f -> bassSum += mag * 2.2f
+                freq in 240f..2800f -> vocalSum += mag * 1.8f
+                else -> instrumentSum += mag * 1.5f
             }
         }
 
-        val rawLow = (lowEnergy / (n * 0.015f)).coerceIn(0f, 255f)
-        val rawMidLow = (midLowEnergy / (n * 0.035f)).coerceIn(0f, 255f)
-        val rawMid = (midEnergy / (n * 0.07f)).coerceIn(0f, 255f)
-        val rawMidHigh = (midHighEnergy / (n * 0.09f)).coerceIn(0f, 255f)
-        val rawHigh = (highEnergy / (n * 0.12f)).coerceIn(0f, 255f)
+        val rawBass = (bassSum / (n * 0.018f)).coerceIn(0f, 255f)
+        val rawVocal = (vocalSum / (n * 0.04f)).coerceIn(0f, 255f)
+        val rawInstrument = (instrumentSum / (n * 0.06f)).coerceIn(0f, 255f)
 
-        // Smooth decay filter for natural visualizer pulsing
-        smoothLow = max(rawLow, smoothLow * 0.82f)
-        smoothMidLow = max(rawMidLow, smoothMidLow * 0.80f)
-        smoothMid = max(rawMid, smoothMid * 0.78f)
-        smoothMidHigh = max(rawMidHigh, smoothMidHigh * 0.75f)
-        smoothHigh = max(rawHigh, smoothHigh * 0.72f)
+        // Smooth decay to prevent LED flicker
+        smoothBass = max(rawBass, smoothBass * 0.70f)
+        smoothVocal = max(rawVocal, smoothVocal * 0.65f)
+        smoothInstrument = max(rawInstrument, smoothInstrument * 0.60f)
 
-        onData(
-            smoothLow.toInt(),
-            smoothMidLow.toInt(),
-            smoothMid.toInt(),
-            smoothMidHigh.toInt(),
-            smoothHigh.toInt()
+        on3BandData(
+            smoothBass.toInt(),
+            smoothVocal.toInt(),
+            smoothInstrument.toInt()
         )
     }
 
     @SuppressLint("MissingPermission")
     private fun startAudioRecordFallback(
-        onData: (low: Int, midLow: Int, mid: Int, midHigh: Int, high: Int) -> Unit
+        on3BandData: (bass: Int, vocal: Int, instrument: Int) -> Unit
     ) {
+        if (audioRecordThread != null) return
         try {
             val sampleRate = 44100
             val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -186,7 +169,7 @@ class MusicVisualizer(private val context: Context) {
             }
 
             audioRecord?.startRecording()
-            Log.d(TAG, "AudioRecord fallback recording started successfully")
+            Log.d(TAG, "AudioRecord fallback started successfully")
 
             audioRecordThread = Thread {
                 val buffer = ShortArray(1024)
@@ -195,43 +178,47 @@ class MusicVisualizer(private val context: Context) {
                     if (read > 0) {
                         var sum = 0.0
                         var bassSum = 0.0
+                        var trebleSum = 0.0
+
                         for (i in 0 until read) {
                             val sample = buffer[i].toDouble()
                             sum += sample * sample
-                            if (i % 4 == 0) {
-                                bassSum += sample * sample
-                            }
+                            if (i % 4 == 0) bassSum += sample * sample
+                            if (i % 2 == 1) trebleSum += sample * sample
                         }
+
                         val rms = sqrt(sum / read).toFloat()
                         val bassRms = sqrt(bassSum / (read / 4)).toFloat()
+                        val trebleRms = sqrt(trebleSum / (read / 2)).toFloat()
 
-                        // Normalize dynamic mic amplitude
-                        val energy = ((rms / 32768f) * 750f).coerceIn(0f, 255f)
-                        val bassEnergy = ((bassRms / 32768f) * 900f).coerceIn(0f, 255f)
+                        // Dynamic AGC
+                        peakRms = max(rms, peakRms * 0.96f).coerceAtLeast(300f)
+                        val gain = (255f / peakRms)
 
-                        smoothLow = max(bassEnergy * 1.3f, smoothLow * 0.82f).coerceIn(0f, 255f)
-                        smoothMidLow = max(energy * 1.05f, smoothMidLow * 0.80f).coerceIn(0f, 255f)
-                        smoothMid = max(energy * 0.90f, smoothMid * 0.78f).coerceIn(0f, 255f)
-                        smoothMidHigh = max(energy * 0.75f, smoothMidHigh * 0.75f).coerceIn(0f, 255f)
-                        smoothHigh = max(energy * 0.60f, smoothHigh * 0.72f).coerceIn(0f, 255f)
+                        val rawEnergy = (rms * gain).coerceIn(0f, 255f)
+                        val rawBass = (bassRms * gain * 1.35f).coerceIn(0f, 255f)
+                        val rawTreble = (trebleRms * gain * 1.15f).coerceIn(0f, 255f)
 
-                        onData(
-                            smoothLow.toInt(),
-                            smoothMidLow.toInt(),
-                            smoothMid.toInt(),
-                            smoothMidHigh.toInt(),
-                            smoothHigh.toInt()
+                        smoothBass = max(rawBass, smoothBass * 0.70f).coerceIn(0f, 255f)
+                        smoothVocal = max(rawEnergy, smoothVocal * 0.65f).coerceIn(0f, 255f)
+                        smoothInstrument = max(rawTreble, smoothInstrument * 0.60f).coerceIn(0f, 255f)
+
+                        on3BandData(
+                            smoothBass.toInt(),
+                            smoothVocal.toInt(),
+                            smoothInstrument.toInt()
                         )
                     }
+
                     try {
-                        Thread.sleep(25) // ~40 FPS update rate
+                        Thread.sleep(45)
                     } catch (e: InterruptedException) {
                         break
                     }
                 }
             }.apply {
                 isDaemon = true
-                name = "GlyphAudioRecordFallback"
+                name = "Glyph3BandAudioFallback"
                 start()
             }
         } catch (e: Exception) {

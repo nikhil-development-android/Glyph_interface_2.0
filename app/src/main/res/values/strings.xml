@@ -58,8 +58,28 @@
     <string name="resume_timer">RESUME</string>
     <string name="reset_timer">RESET</string>
     
+    <!-- Settings & Customization -->
+    <string name="settings_header">CUSTOMIZATION &amp; ENGINE</string>
+    <string name="settings_title">Settings</string>
+    <string name="theme_appearance_title">THEME &amp; APPEARANCE</string>
+    <string name="theme_mode_system">System Auto</string>
+    <string name="theme_mode_dark">Dark Mode</string>
+    <string name="theme_mode_light">Light Mode</string>
+    <string name="glass_effect_title">Glassmorphism Effect</string>
+    <string name="glass_effect_sub">Frosted glass transparency &amp; glow borders</string>
+    <string name="monet_color_title">ACCENT COLOR &amp; MONET</string>
+    <string name="monet_dynamic_title">Dynamic Monet (System)</string>
+    <string name="monet_dynamic_sub">Match system wallpaper palette</string>
+    <string name="wallpaper_bg_title">BACKGROUND WALLPAPER</string>
+    <string name="hardware_diagnostics_title">HARDWARE DIAGNOSTICS</string>
+    <string name="root_status_label">ROOT STATUS</string>
+    <string name="root_active_msg">Root Su Shell Acquired</string>
+    <string name="sysfs_node_label">SYSFS NODE</string>
+    <string name="sysfs_node_path">/sys/class/leds/aw20036_led/</string>
+
     <!-- Bottom Navigation Tabs -->
     <string name="nav_visuals">Visuals</string>
     <string name="nav_patterns">Patterns</string>
     <string name="nav_timer">Timer</string>
+    <string name="nav_settings">Settings</string>
 </resources>

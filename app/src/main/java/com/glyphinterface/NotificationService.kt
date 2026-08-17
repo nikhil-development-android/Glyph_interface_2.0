@@ -7,16 +7,23 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.AudioManager
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import kotlin.math.abs
 
 class NotificationService : NotificationListenerService(), SensorEventListener {
 
@@ -30,6 +37,24 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
     private var isFlippedAccel = false
     private var isNearProximity = false
     private var isFaceDown = false
+    private var lastObservedVolume = -1
+
+    private val volumeContentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            super.onChange(selfChange)
+            if (!volumeIndicatorEnabled || !RootUtils.isMainEnabled) return
+            try {
+                val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                if (currentVol != lastObservedVolume) {
+                    lastObservedVolume = currentVol
+                    RootUtils.updateVolumeIndicator(currentVol, maxVol)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error checking volume observer: ${e.message}")
+            }
+        }
+    }
 
     private val powerMonitor = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -39,13 +64,15 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
                         val batteryIntent = context?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
                         val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
                         val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-                        if (level >= 0 && scale > 0) {
-                            val batteryPct = ((level.toFloat() / scale.toFloat()) * 100).toInt()
-                            RootUtils.updateChargingIndicator(batteryPct)
+                        val batteryPct = if (level >= 0 && scale > 0) {
+                            ((level.toFloat() / scale.toFloat()) * 100).toInt()
+                        } else {
+                            50
                         }
+                        RootUtils.updateChargingConnected(batteryPct)
                     }
                     Intent.ACTION_POWER_DISCONNECTED -> {
-                        RootUtils.clearAllLedsSmoothly()
+                        RootUtils.updateChargingDisconnected()
                     }
                 }
             }
@@ -69,8 +96,30 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
             addAction(Intent.ACTION_POWER_DISCONNECTED)
             addAction(Intent.ACTION_BATTERY_CHANGED)
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction("android.media.VOLUME_CHANGED_ACTION")
         }
-        registerReceiver(powerMonitor, filter)
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                powerMonitor,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } catch (e: Exception) {
+            try {
+                registerReceiver(powerMonitor, filter)
+            } catch (_: Exception) {}
+        }
+
+        try {
+            contentResolver.registerContentObserver(
+                Settings.System.CONTENT_URI,
+                true,
+                volumeContentObserver
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register volume content observer: ${e.message}")
+        }
     }
 
     private fun createNotificationChannel() {
@@ -138,7 +187,7 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
             statusLines.add("Flip Mode: ACTIVE")
         }
 
-        val statusText = if (statusLines.isEmpty()) "Monitoring Glyph Features" else statusLines.joinToString(" | ")
+        val statusText = if (statusLines.isEmpty()) "Glyph Hardware Ready" else statusLines.joinToString(" | ")
         builder.setContentText(statusText)
 
         startForeground(NOTIFICATION_ID, builder.build())
@@ -170,7 +219,18 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        if (!RootUtils.isMainEnabled || sbn == null) return
+
+        // Do not trigger notification blink for our own foreground service or ongoing notifications (music, download)
+        if (sbn.packageName == packageName || sbn.isOngoing) {
+            return
+        }
+
         if (isFlipModeActive && flipToGlyphEnabled) {
+            // Flip to Glyph: LED 33 blinks for 2 seconds on incoming message/notification
+            RootUtils.blinkFlipNotification()
+        } else {
+            // Standard notification: blinks 2 times
             RootUtils.blinkNotification(this)
         }
     }
@@ -182,8 +242,11 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
 
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                // Z axis < -8 m/s^2 means screen is facing downwards
-                isFlippedAccel = event.values[2] < -8.0f
+                // Z axis < -7.0 m/s^2 means screen is facing downwards
+                val z = event.values[2]
+                val x = event.values[0]
+                val y = event.values[1]
+                isFlippedAccel = z < -7.0f && abs(x) < 5.0f && abs(y) < 5.0f
             }
             Sensor.TYPE_LIGHT -> {
                 if (autoBrightnessEnabled) {
@@ -200,18 +263,32 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
         }
 
         if (flipToGlyphEnabled) {
-            val currentlyFaceDown = isFlippedAccel && isNearProximity
+            // Detect face-down: accelerometer shows face down, proximity (if present) confirms table/surface proximity
+            val currentlyFaceDown = if (proximity != null) {
+                isFlippedAccel && isNearProximity
+            } else {
+                isFlippedAccel
+            }
+
             if (currentlyFaceDown && !isFaceDown) {
                 isFaceDown = true
                 isFlipModeActive = true
                 RootUtils.playFlipAnimation(this)
-                audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                try {
+                    audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set silent mode (needs DND access): ${e.message}")
+                }
                 updateServiceNotification()
             } else if (!currentlyFaceDown && isFaceDown) {
                 isFaceDown = false
                 isFlipModeActive = false
                 RootUtils.clearAllLedsSmoothly()
-                audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                try {
+                    audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not restore normal ringer: ${e.message}")
+                }
                 updateServiceNotification()
             }
         }
@@ -223,11 +300,15 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
         super.onDestroy()
         sensorManager.unregisterListener(this)
         try {
+            contentResolver.unregisterContentObserver(volumeContentObserver)
+        } catch (e: Exception) {}
+        try {
             unregisterReceiver(powerMonitor)
         } catch (e: Exception) {}
     }
 
     companion object {
+        private const val TAG = "NotificationService"
         const val CHANNEL_ID = "glyph_service_channel"
         const val NOTIFICATION_ID = 1001
         const val ACTION_STOP_TORCH = "com.glyphinterface.ACTION_STOP_TORCH"
@@ -235,6 +316,7 @@ class NotificationService : NotificationListenerService(), SensorEventListener {
 
         var isFlipModeActive = false
         var flipToGlyphEnabled = false
+        var volumeIndicatorEnabled = true
         var autoBrightnessEnabled = false
         var isTorchOn = false
         var activeTimerSeconds = -1

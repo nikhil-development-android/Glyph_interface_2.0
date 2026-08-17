@@ -12,16 +12,15 @@ import java.util.concurrent.LinkedBlockingQueue
 
 object GlyphManager {
     private const val TAG = "GlyphManager"
-    private const val BASE_PATH = "/sys/class/leds/aw20036_led"
-    private const val VIBRATOR_DURATION_PATH = "/sys/class/leds/vibrator/duration"
-    private const val VIBRATOR_ACTIVATE_PATH = "/sys/class/leds/vibrator/activate"
+    const val BASE_PATH = "/sys/class/leds/aw20036_led"
 
     var currentBrightnessMultiplier = 1.0f
 
     @Volatile
-    private var isPlaying = false
+    var isPlaying = false
+        private set
 
-    private val commandQueue = LinkedBlockingQueue<String>(100)
+    private val commandQueue = LinkedBlockingQueue<String>(120)
 
     @Volatile
     private var isRunning = true
@@ -96,12 +95,12 @@ object GlyphManager {
                 if (trimmed.startsWith("echo ") && trimmed.contains(" > ")) {
                     val parts = trimmed.removePrefix("echo ").split(" > ")
                     if (parts.size == 2) {
-                        val value = parts[0].trim()
+                        val rawValue = parts[0].trim().removeSurrounding("\"").removeSurrounding("'")
                         val path = parts[1].trim()
                         val file = File(path)
                         if (file.exists() && file.canWrite()) {
                             FileOutputStream(file).use { fos ->
-                                fos.write(value.toByteArray())
+                                fos.write(rawValue.toByteArray())
                                 fos.flush()
                             }
                         }
@@ -122,8 +121,15 @@ object GlyphManager {
     }
 
     /**
-     * Plays Nothing OS Glyph animation CSV.
-     * Fixes LED 33 mapping and scales 12-bit (0..4095) CSV PWM values to 8-bit (0..255).
+     * Executes shell command synchronously for critical timing operations (e.g. blinks)
+     */
+    fun runCommandSync(command: String) {
+        executeInternal(command)
+    }
+
+    /**
+     * Plays Nothing OS Glyph animation CSV or algorithmic pattern.
+     * Maps 0-31 ladder, LED 20 (mini LED) and LED 33 (medium LED).
      */
     fun playAnimation(context: Context, assetPath: String, isNotification: Boolean = false) {
         stopAnimation()
@@ -131,7 +137,6 @@ object GlyphManager {
 
         Thread {
             try {
-                // For call ringtones, loop until stopped; for notifications, play once
                 do {
                     context.assets.open(assetPath).use { inputStream ->
                         BufferedReader(InputStreamReader(inputStream)).use { reader ->
@@ -144,62 +149,63 @@ object GlyphManager {
                                     if (tokens.isNotEmpty()) {
                                         val values = tokens.mapNotNull { it.toIntOrNull() }
                                         if (values.isNotEmpty()) {
-                                            val ledBrightnessMap = IntArray(33) { 0 }
-
-                                            if (values.size >= 33) {
-                                                for (i in 0 until 33) {
-                                                    val raw = values[i]
-                                                    ledBrightnessMap[i] = scalePwmValue(raw)
-                                                }
-                                            } else if (values.size >= 25) {
-                                                // Standard 26-zone Nothing Phone pattern
-                                                // 0..15: Center loop (16 LEDs)
-                                                for (i in 0..15) {
-                                                    if (i < values.size) {
-                                                        ledBrightnessMap[i] = scalePwmValue(values[i])
-                                                    }
-                                                }
-                                                // 16..19: Slanted strips
-                                                for (i in 16..19) {
-                                                    if (i < values.size) {
-                                                        ledBrightnessMap[i] = scalePwmValue(values[i])
-                                                    }
-                                                }
-                                                // 20..23: Center vertical LEDs
-                                                for (i in 20..23) {
-                                                    if (i < values.size) {
-                                                        ledBrightnessMap[i] = scalePwmValue(values[i])
-                                                    }
-                                                }
-                                                // 24..31: Bottom strip indicator
-                                                val bottomStripVal = if (24 < values.size) scalePwmValue(values[24]) else 0
-                                                for (i in 24..31) {
-                                                    ledBrightnessMap[i] = bottomStripVal
-                                                }
-                                                // 32 (LED 33): Bottom dot / indicator
-                                                val led33Val = if (25 < values.size) scalePwmValue(values[25]) else bottomStripVal
-                                                ledBrightnessMap[32] = led33Val
-                                            } else if (values.size == 5) {
-                                                // Nothing Phone (1) / 5-zone fallback
-                                                for (i in 0..15) ledBrightnessMap[i] = scalePwmValue(values[0])
-                                                for (i in 16..19) ledBrightnessMap[i] = scalePwmValue(values[1])
-                                                for (i in 20..23) ledBrightnessMap[i] = scalePwmValue(values[2])
-                                                for (i in 24..31) ledBrightnessMap[i] = scalePwmValue(values[3])
-                                                ledBrightnessMap[32] = scalePwmValue(values[4])
-                                            }
-
-                                            // Build batch sysfs string
                                             val sb = StringBuilder()
-                                            for (i in 0..32) {
-                                                sb.append("echo $i ${ledBrightnessMap[i]} > $BASE_PATH/single_brightness; ")
+                                            val brightnessMap = IntArray(34) { 0 }
+
+                                            if (values.size >= 26) {
+                                                // Map 26 channel Nothing OS pattern:
+                                                // 0..15 -> Step columns
+                                                for (i in 0..7) {
+                                                    val stepVal = scalePwmValue(values[i % values.size])
+                                                    val leds = RootUtils.STEP_COLUMNS[i]
+                                                    for (led in leds) {
+                                                        brightnessMap[led] = stepVal
+                                                    }
+                                                }
+                                                // LED 20 (Mini LED no-2)
+                                                if (20 < values.size) {
+                                                    brightnessMap[20] = scalePwmValue(values[20])
+                                                }
+                                                // LED 33 (Medium LED no-3)
+                                                if (25 < values.size) {
+                                                    brightnessMap[33] = scalePwmValue(values[25])
+                                                } else if (values.size > 8) {
+                                                    brightnessMap[33] = scalePwmValue(values[8])
+                                                }
+                                            } else if (values.size >= 8) {
+                                                for (i in 0..7) {
+                                                    val stepVal = scalePwmValue(values[i])
+                                                    for (led in RootUtils.STEP_COLUMNS[i]) {
+                                                        brightnessMap[led] = stepVal
+                                                    }
+                                                }
+                                                if (values.size > 8) brightnessMap[20] = scalePwmValue(values[8])
+                                                if (values.size > 9) brightnessMap[33] = scalePwmValue(values[9])
+                                            } else {
+                                                val stepVal = scalePwmValue(values[0])
+                                                for (i in 0..7) {
+                                                    for (led in RootUtils.STEP_COLUMNS[i]) {
+                                                        brightnessMap[led] = stepVal
+                                                    }
+                                                }
+                                                brightnessMap[20] = stepVal
+                                                brightnessMap[33] = stepVal
                                             }
+
+                                            // Build batch sysfs command with echo "LED BRIGHTNESS"
+                                            for (led in 0..31) {
+                                                val br = brightnessMap[led]
+                                                sb.append("echo \"$led $br\" > $BASE_PATH/single_brightness; ")
+                                            }
+                                            sb.append("echo \"20 ${brightnessMap[20]}\" > $BASE_PATH/single_brightness; ")
+                                            sb.append("echo \"33 ${brightnessMap[33]}\" > $BASE_PATH/single_brightness; ")
+                                            
                                             runCommand(sb.toString())
                                         }
                                     }
                                 }
 
-                                // 20ms per frame (50 FPS Nothing OS standard frame rate)
-                                SystemClock.sleep(20)
+                                SystemClock.sleep(25)
                                 line = reader.readLine()
                             }
                         }
@@ -210,7 +216,7 @@ object GlyphManager {
             } finally {
                 if (isNotification) {
                     isPlaying = false
-                    clearSmoothly()
+                    clearAllLedsSmoothly()
                 }
             }
         }.apply {
@@ -222,7 +228,6 @@ object GlyphManager {
 
     private fun scalePwmValue(rawVal: Int): Int {
         if (rawVal <= 0) return 0
-        // Raw values can be up to 4095 (12-bit) or up to 255 (8-bit)
         val normalized = if (rawVal > 255) {
             (rawVal / 4095.0f) * 255.0f
         } else {
@@ -235,19 +240,23 @@ object GlyphManager {
         isPlaying = false
     }
 
-    fun clearSmoothly() {
+    fun clearAllLedsSmoothly() {
         Thread {
-            for (step in 4 downTo 0) {
-                val factor = step / 4.0f
+            for (step in 3 downTo 0) {
+                val factor = step / 3.0f
+                val br = (255 * factor * currentBrightnessMultiplier).toInt().coerceIn(0, 255)
                 val sb = StringBuilder()
-                for (i in 0..32) {
-                    val br = (255 * factor * currentBrightnessMultiplier).toInt().coerceIn(0, 255)
-                    sb.append("echo $i $br > $BASE_PATH/single_brightness; ")
+                for (col in RootUtils.STEP_COLUMNS) {
+                    for (led in col) {
+                        sb.append("echo \"$led $br\" > $BASE_PATH/single_brightness; ")
+                    }
                 }
+                sb.append("echo \"20 $br\" > $BASE_PATH/single_brightness; ")
+                sb.append("echo \"33 $br\" > $BASE_PATH/single_brightness; ")
                 runCommand(sb.toString())
-                SystemClock.sleep(25)
+                SystemClock.sleep(30)
             }
-            runCommand("echo 0 > $BASE_PATH/all_white_brightness")
+            runCommand("echo 0 > $BASE_PATH/all_brightness; echo 0 > $BASE_PATH/all_white_brightness")
         }.apply {
             isDaemon = true
             name = "GlyphSmoothClear"
